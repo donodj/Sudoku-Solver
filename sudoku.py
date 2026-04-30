@@ -134,7 +134,7 @@ class Sudoku:
         #Quickly fills the whole board with a valid solved Sudoku grid.
         #This uses a standard Sudoku pattern and shuffles rows, columns, and
         #numbers. The DFS solver is then used for solving puzzles made from it.
-        
+
         base = self.size
         side = self.row_col_length
 
@@ -219,10 +219,10 @@ class Sudoku:
 
 
 class SudokuGUI:
-    def __init__(self, root: tk.Tk, blanks: int = 40) -> None:
+    def __init__(self, root: tk.Tk, size: int = 3, blanks: int = 40) -> None:
         self.root = root
         self.root.title("Sudoku DFS Solver")
-        self.sudoku = Sudoku(size=3)
+        self.sudoku = Sudoku(size)
         self.blanks = blanks
         self.selected_cell: tuple[int, int] | None = None
         self.cells: list[list[tk.Label]] = []
@@ -245,13 +245,16 @@ class SudokuGUI:
         self.board_frame = tk.Frame(outer, bg="black", bd=2, relief="solid")
         self.board_frame.pack()
 
-        for r in range(9):
+        size = self.sudoku.size
+        row_col_length = self.sudoku.row_col_length
+
+        for r in range(row_col_length):
             row_cells = []
-            for c in range(9):
-                left = 2 if c % 3 == 0 else 1
-                top = 2 if r % 3 == 0 else 1
-                right = 2 if c == 8 else 0
-                bottom = 2 if r == 8 else 0
+            for c in range(row_col_length):
+                left = 2 if c % size == 0 else 1
+                top = 2 if r % size == 0 else 1
+                right = 2 if c == row_col_length - 1 else 0
+                bottom = 2 if r == row_col_length - 1 else 0
                 cell = tk.Label(
                     self.board_frame,
                     text="",
@@ -269,7 +272,7 @@ class SudokuGUI:
 
         keypad = tk.Frame(outer, pady=10)
         keypad.pack()
-        for num in range(1, 10):
+        for num in range(1, row_col_length + 1):
             button = tk.Button(
                 keypad,
                 text=str(num),
@@ -304,7 +307,7 @@ class SudokuGUI:
             "How many blanks? Easy: 30, Medium: 40, Hard: 50",
             initialvalue=self.blanks,
             minvalue=0,
-            maxvalue=81,
+            maxvalue=self.sudoku.row_col_length * self.sudoku.row_col_length,
         )
         if blanks is not None:
             self.blanks = blanks
@@ -373,8 +376,8 @@ class SudokuGUI:
         has_errors = False
         incomplete = False
 
-        for r in range(9):
-            for c in range(9):
+        for r in range(self.sudoku.row_col_length):
+            for c in range(self.sudoku.row_col_length):
                 num = self.sudoku.board[r][c]
                 if num == 0:
                     incomplete = True
@@ -401,8 +404,8 @@ class SudokuGUI:
             self.clear_selected()
 
     def refresh_board(self, show_errors: bool = False) -> None:
-        for r in range(9):
-            for c in range(9):
+        for r in range(self.sudoku.row_col_length):
+            for c in range(self.sudoku.row_col_length):
                 value = self.sudoku.board[r][c]
                 label = self.cells[r][c]
                 label.config(text="" if value == 0 else str(value))
@@ -429,9 +432,9 @@ class SudokuGUI:
         self.root.after(250, self.refresh_board)
 
 
-def play_game() -> None:
-    sudoku = Sudoku(size=3)
-    sudoku.generate_puzzle(blanks=40)
+def play_game(size: int = 3, blanks: int = 40) -> None:
+    sudoku = Sudoku(size)
+    sudoku.generate_puzzle(blanks)
 
     print("Generated Sudoku puzzle:")
     sudoku.print_board()
@@ -487,7 +490,7 @@ def play_game() -> None:
 
 def run_gui() -> None:
     root = tk.Tk()
-    SudokuGUI(root)
+    SudokuGUI(root, size=3)
     root.mainloop()
 
 
