@@ -149,8 +149,12 @@ def heuristic_generator(start_board: Board, size: int = 3) -> Generator[SolverYi
         peers.discard((row, col))
 
         def conflicts(num: int) -> int:
-            return sum(board[r][c] == 0 and num in legal_numbers(board, r, c, size) for r, c in peers)
-
+            board[row][col] = num
+            eliminated = sum (1 
+                for r, c in peers
+                if board[r][c] == 0 and num in legal_numbers(board, r, c, size))
+            board[row][col] = 0
+            return eliminated
         return sorted(candidates, key=conflicts)
 
     def search() -> Generator[SolverYield, None, bool]:
@@ -208,7 +212,8 @@ def csp_generator(start_board: Board, size: int = 3) -> Generator[SolverYield, N
             domains[(r, c)] = values
         return domains
 
-    def propagate(domains: dict[tuple[int, int], set[int]], queue: list[tuple[int, int]]) -> bool:
+    def propagate(domains: dict[tuple[int, int], set[int]], queue: list[tuple[int, int]],track_steps: bool = False) -> bool:
+        nonlocal steps
         while queue:
             cell = queue.pop()
             if len(domains[cell]) != 1:
@@ -223,8 +228,9 @@ def csp_generator(start_board: Board, size: int = 3) -> Generator[SolverYield, N
                         return False
                     if len(domains[peer]) == 1:
                         queue.append(peer)
+                        if track_steps:
+                            steps += 1
         return True
-
     def domains_to_board(domains: dict[tuple[int, int], set[int]]) -> Board:
         return [
             [next(iter(domains[(r, c)])) if len(domains[(r, c)]) == 1 else 0 for c in range(side)]
@@ -232,7 +238,7 @@ def csp_generator(start_board: Board, size: int = 3) -> Generator[SolverYield, N
         ]
 
     domains = initial_domains()
-    if domains is None or not propagate(domains, [cell for cell in cells if len(domains[cell]) == 1]):
+    if domains is None or not propagate(domains, [cell for cell in cells if len(domains[cell]) == 1], track_steps=True):
         yield clone_board(board), steps, "No solution", True
         return
 
@@ -248,7 +254,7 @@ def csp_generator(start_board: Board, size: int = 3) -> Generator[SolverYield, N
             new_domains[cell] = {value}
             steps += 1
 
-            if propagate(new_domains, [cell]):
+            if propagate(new_domains, [cell], track_steps=True):
                 yield domains_to_board(new_domains), steps, "Running", False
                 result = yield from search(new_domains)
                 if result is not None:
