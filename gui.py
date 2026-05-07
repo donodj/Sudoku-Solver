@@ -1,95 +1,203 @@
+import time
 import tkinter as tk
 from copy import deepcopy
-from tkinter import messagebox, simpledialog
+from tkinter import simpledialog
+
 from sudoku import Sudoku
 import solvers
 
 
-class SudokuGUI:
-    def __init__(self, root: tk.Tk, size: int = 3, blanks: int = 40) -> None:
-        self.root = root
-        self.root.title("Sudoku DFS Solver")
-        self.sudoku = Sudoku(size)
-        self.blanks = blanks
-        self.selected_cell: tuple[int, int] | None = None
+class SolverPanel:
+    def __init__(self, parent: tk.Widget, title: str, size: int = 3) -> None:
+        self.title = title
+        self.size = size
+        self.side = size * size
         self.cells: list[list[tk.Label]] = []
+        self.generator = None
+        self.running = False
+        self.done = False
+        self.steps = 0
+        self.start_time: float | None = None
+        self.elapsed = 0.0
 
         self.normal_bg = "white"
         self.given_bg = "#e6e6e6"
-        self.selected_bg = "#cfe8ff"
-        self.error_bg = "#ffcccc"
+        self.solve_bg = "#eaf3ff"
 
-        self.build_layout()
-        self.new_puzzle()
+        self.frame = tk.Frame(parent, padx=8, pady=8, bd=2, relief="groove")
+        tk.Label(self.frame, text=title, font=("Arial", 14, "bold")).pack(pady=(0, 4))
 
+        board_frame = tk.Frame(self.frame, bg="black", bd=2, relief="solid")
+        board_frame.pack()
 
-    def build_layout(self) -> None:
-        outer = tk.Frame(self.root, padx=12, pady=12)
-        outer.pack()
-
-        title = tk.Label(outer, text="Sudoku", font=("Arial", 22, "bold"))
-        title.pack(pady=(0, 8))
-
-        self.board_frame = tk.Frame(outer, bg="black", bd=2, relief="solid")
-        self.board_frame.pack()
-
-        size = self.sudoku.size
-        row_col_length = self.sudoku.row_col_length
-
-        for r in range(row_col_length):
+        for r in range(self.side):
             row_cells = []
-            for c in range(row_col_length):
-                left = 2 if c % size == 0 else 1
-                top = 2 if r % size == 0 else 1
-                right = 2 if c == row_col_length - 1 else 0
-                bottom = 2 if r == row_col_length - 1 else 0
+            for c in range(self.side):
                 cell = tk.Label(
-                    self.board_frame,
+                    board_frame,
                     text="",
-                    width=3,
+                    width=2,
                     height=1,
-                    font=("Arial", 24),
+                    font=("Arial", 13),
                     bg=self.normal_bg,
                     relief="solid",
                     bd=1,
                 )
-                cell.grid(row=r, column=c, padx=(left, right), pady=(top, bottom), sticky="nsew")
-                cell.bind("<Button-1>", lambda event, row=r, col=c: self.select_cell(row, col))
+                cell.grid(
+                    row=r,
+                    column=c,
+                    padx=(2 if c % size == 0 else 1, 2 if c == self.side - 1 else 0),
+                    pady=(2 if r % size == 0 else 1, 2 if r == self.side - 1 else 0),
+                    sticky="nsew",
+                )
                 row_cells.append(cell)
             self.cells.append(row_cells)
 
-        keypad = tk.Frame(outer, pady=10)
-        keypad.pack()
-        for num in range(1, row_col_length + 1):
-            button = tk.Button(
-                keypad,
-                text=str(num),
-                width=4,
-                font=("Arial", 14),
-                command=lambda value=num: self.enter_number(value),
-            )
-            button.grid(row=0, column=num - 1, padx=2)
+        self.timer_label = tk.Label(self.frame, text="Time: 0.0000 s", font=("Arial", 10))
+        self.timer_label.pack(pady=(6, 0))
+        self.steps_label = tk.Label(self.frame, text="Steps: 0", font=("Arial", 10))
+        self.steps_label.pack()
+        self.status_label = tk.Label(self.frame, text="Ready", font=("Arial", 10), width=22)
+        self.status_label.pack()
+
+    def set_board(self, board: list[list[int]], given_cells: set[tuple[int, int]]) -> None:
+        for r in range(self.side):
+            for c in range(self.side):
+                value = board[r][c]
+                cell = self.cells[r][c]
+                cell.config(text="" if value == 0 else str(value))
+
+                if (r, c) in given_cells:
+                    cell.config(bg=self.given_bg, fg="black", font=("Arial", 13, "bold"))
+                else:
+                    cell.config(bg=self.solve_bg if value else self.normal_bg, fg="#2255aa", font=("Arial", 13))
+
+    def reset(self, board: list[list[int]], given_cells: set[tuple[int, int]]) -> None:
+        self.generator = None
+        self.running = False
+        self.done = False
+        self.steps = 0
+        self.start_time = None
+        self.elapsed = 0.0
+        self.set_board(board, given_cells)
+        self.timer_label.config(text="Time: 0.0000 s")
+        self.steps_label.config(text="Steps: 0")
+        self.status_label.config(text="Ready")
+
+    def start(self, board: list[list[int]], given_cells: set[tuple[int, int]], generator_function) -> None:
+        self.reset(board, given_cells)
+        self.generator = generator_function(board, self.size)
+        self.running = True
+        self.start_time = time.perf_counter()
+        self.status_label.config(text="Running")
+
+    def stop(self) -> None:
+        if self.running and self.start_time is not None:
+            self.elapsed = time.perf_counter() - self.start_time
+        self.running = False
+        self.start_time = None
+        self.update_timer()
+        if not self.done:
+            self.status_label.config(text="Stopped")
+
+    def current_elapsed(self) -> float:
+        if self.running and self.start_time is not None:
+            return time.perf_counter() - self.start_time
+        return self.elapsed
+
+    def update_timer(self) -> None:
+        self.timer_label.config(text=f"Time: {self.current_elapsed():.4f} s")
+
+    def finish(self) -> None:
+        if self.start_time is not None:
+            self.elapsed = time.perf_counter() - self.start_time
+        self.running = False
+        self.done = True
+        self.start_time = None
+        self.update_timer()
+
+    def advance(self, given_cells: set[tuple[int, int]], max_updates: int = 20) -> None:
+        if not self.running or self.done or self.generator is None:
+            self.update_timer()
+            return
+
+        try:
+            update = None
+            for _ in range(max_updates):
+                update = next(self.generator)
+                if update[3]:
+                    break
+
+            if update is None:
+                return
+
+            board, steps, status, done = update
+            self.steps = steps
+            self.set_board(board, given_cells)
+            self.steps_label.config(text=f"Steps: {steps}")
+            self.status_label.config(text=status)
+            self.update_timer()
+
+            if done:
+                self.finish()
+        except StopIteration:
+            self.finish()
+            if self.status_label.cget("text") == "Running":
+                self.status_label.config(text="Finished")
+
+
+class SudokuCompareGUI:
+    def __init__(self, root: tk.Tk, size: int = 3, blanks: int = 40) -> None:
+        self.root = root
+        self.root.title("Sudoku Solver Comparison")
+        self.sudoku = Sudoku(size)
+        self.size = size
+        self.side = size * size
+        self.blanks = blanks
+        self.solving = False
+        self.puzzle_board: list[list[int]] = []
+        self.given_cells: set[tuple[int, int]] = set()
+        self.panels: dict[str, SolverPanel] = {}
+
+        self.build_layout()
+        self.new_puzzle()
+
+    def build_layout(self) -> None:
+        outer = tk.Frame(self.root, padx=12, pady=12)
+        outer.pack(fill="both", expand=True)
+
+        tk.Label(outer, text="Sudoku Solver Comparison", font=("Arial", 22, "bold")).pack(pady=(0, 4))
+        tk.Label(
+            outer,
+            text="Same puzzle solved at the same time with DFS, Knuth Algorithm X, heuristics, and CSP.",
+            font=("Arial", 11),
+        ).pack(pady=(0, 8))
 
         controls = tk.Frame(outer)
-        controls.pack(pady=(4, 0))
-
+        controls.pack(pady=(0, 10))
         tk.Button(controls, text="New Puzzle", command=self.ask_new_puzzle).grid(row=0, column=0, padx=4)
-        tk.Button(controls, text="Solve with DFS", command=self.solve_with_dfs).grid(row=0, column=1, padx=4)
-        tk.Button(controls, text="Check", command=self.check_board).grid(row=0, column=2, padx=4)
-        tk.Button(controls, text="Clear Selected", command=self.clear_selected).grid(row=0, column=3, padx=4)
+        tk.Button(controls, text="Run All Solvers", command=self.run_all_solvers).grid(row=0, column=1, padx=4)
+        tk.Button(controls, text="Stop", command=self.stop_all).grid(row=0, column=2, padx=4)
+        tk.Button(controls, text="Reset Views", command=self.reset_views).grid(row=0, column=3, padx=4)
 
         self.status = tk.Label(outer, text="", font=("Arial", 11), anchor="w")
-        self.status.pack(fill="x", pady=(8, 0))
+        self.status.pack(fill="x", pady=(0, 8))
 
-        self.root.bind("<Key>", self.handle_keypress)
+        panels_frame = tk.Frame(outer)
+        panels_frame.pack()
 
+        for idx, name in enumerate(solvers.SOLVER_GENERATORS):
+            panel = SolverPanel(panels_frame, name, self.size)
+            panel.frame.grid(row=0, column=idx, padx=6, sticky="n")
+            self.panels[name] = panel
 
     def new_puzzle(self) -> None:
+        self.stop_all(update_status=False)
         self.sudoku.generate_puzzle(blanks=self.blanks)
-        self.selected_cell = None
-        self.status.config(text=f"New puzzle generated with {self.blanks} blanks.")
-        self.refresh_board()
-
+        self.puzzle_board = deepcopy(self.sudoku.board)
+        self.given_cells = set(self.sudoku.given_cells)
+        self.reset_views()
+        self.status.config(text=f"New puzzle generated with {self.blanks} blanks. Click Run All Solvers to compare.")
 
     def ask_new_puzzle(self) -> None:
         blanks = simpledialog.askinteger(
@@ -97,196 +205,48 @@ class SudokuGUI:
             "How many blanks? Easy: 30, Medium: 40, Hard: 50",
             initialvalue=self.blanks,
             minvalue=0,
-            maxvalue=self.sudoku.row_col_length * self.sudoku.row_col_length,
+            maxvalue=self.side * self.side,
         )
         if blanks is not None:
             self.blanks = blanks
             self.new_puzzle()
 
+    def reset_views(self) -> None:
+        self.solving = False
+        for panel in self.panels.values():
+            panel.reset(self.puzzle_board, self.given_cells)
 
-    def select_cell(self, row: int, col: int) -> None:
-        self.selected_cell = (row, col)
-        self.refresh_board()
+    def run_all_solvers(self) -> None:
+        if not self.puzzle_board:
+            self.new_puzzle()
 
-        if (row, col) in self.sudoku.given_cells:
-            self.status.config(text="That is a starting number, so it cannot be changed.")
+        self.solving = True
+        for name, panel in self.panels.items():
+            panel.start(self.puzzle_board, self.given_cells, solvers.SOLVER_GENERATORS[name])
+        self.status.config(text="All four solvers are running on the same puzzle.")
+        self.root.after(1, self.tick)
+
+    def tick(self) -> None:
+        any_running = False
+        for panel in self.panels.values():
+            panel.advance(self.given_cells)
+            any_running = any_running or panel.running
+
+        if any_running and self.solving:
+            self.root.after(10, self.tick)
         else:
-            self.status.config(text=f"Selected row {row + 1}, column {col + 1}.")
+            self.solving = False
+            self.status.config(text="Comparison finished. Lower time and fewer steps means that method solved this puzzle faster.")
+
+    def stop_all(self, update_status: bool = True) -> None:
+        self.solving = False
+        for panel in self.panels.values():
+            panel.stop()
+        if update_status:
+            self.status.config(text="Stopped all solvers.")
 
 
-    def enter_number(self, num: int) -> None:
-        if self.selected_cell is None:
-            self.status.config(text="Select an empty square first.")
-            return
-
-        row, col = self.selected_cell
-        if (row, col) in self.sudoku.given_cells:
-            self.status.config(text="You cannot change a starting number.")
-            return
-
-        old_value = self.sudoku.board[row][col]
-        self.sudoku.board[row][col] = 0
-
-        if self.sudoku.can_place(row, col, num):
-            self.sudoku.board[row][col] = num
-            self.status.config(text=f"Placed {num} at row {row + 1}, column {col + 1}.")
-        else:
-            self.sudoku.board[row][col] = old_value
-            self.status.config(text=f"{num} cannot legally go there.")
-            self.flash_cell(row, col)
-
-        self.refresh_board()
-
-        if self.sudoku.is_complete_and_valid():
-            messagebox.showinfo("Sudoku", "Congratulations, you solved it!")
-
-
-    def clear_selected(self) -> None:
-        if self.selected_cell is None:
-            self.status.config(text="Select a square to clear.")
-            return
-
-        row, col = self.selected_cell
-        if (row, col) in self.sudoku.given_cells:
-            self.status.config(text="You cannot clear a starting number.")
-            return
-
-        self.sudoku.board[row][col] = 0
-        self.status.config(text=f"Cleared row {row + 1}, column {col + 1}.")
-        self.refresh_board()
-
-
-    def solve_with_dfs(self) -> None:
-        board_before_solving = deepcopy(self.sudoku.board)
-        if solvers.solve_dfs(self.sudoku):
-            self.status.config(text="Solved with DFS/backtracking.")
-            self.refresh_board()
-        else:
-            self.sudoku.board = board_before_solving
-            self.status.config(text="No solution exists for this board.")
-            messagebox.showerror("Sudoku", "No solution exists for this board.")
-
-
-    def check_board(self) -> None:
-        has_errors = False
-        incomplete = False
-
-        for r in range(self.sudoku.row_col_length):
-            for c in range(self.sudoku.row_col_length):
-                num = self.sudoku.board[r][c]
-                if num == 0:
-                    incomplete = True
-                elif not self.sudoku.is_valid_placement(r, c, num):
-                    has_errors = True
-
-        self.refresh_board(show_errors=True)
-
-        if has_errors:
-            self.status.config(text="There are conflicts on the board.")
-            messagebox.showwarning("Check Board", "There are conflicts on the board.")
-        elif incomplete:
-            self.status.config(text="No conflicts so far, but the puzzle is not complete yet.")
-            messagebox.showinfo("Check Board", "No conflicts so far, but the puzzle is not complete yet.")
-        else:
-            self.status.config(text="The board is complete and valid!")
-            messagebox.showinfo("Check Board", "The board is complete and valid!")
-
-
-    def handle_keypress(self, event: tk.Event) -> None:
-        char = event.char
-        if char in "123456789":
-            self.enter_number(int(char))
-        elif event.keysym in {"BackSpace", "Delete", "0"}:
-            self.clear_selected()
-
-
-    def refresh_board(self, show_errors: bool = False) -> None:
-        for r in range(self.sudoku.row_col_length):
-            for c in range(self.sudoku.row_col_length):
-                value = self.sudoku.board[r][c]
-                label = self.cells[r][c]
-                label.config(text="" if value == 0 else str(value))
-
-                if self.selected_cell == (r, c):
-                    bg = self.selected_bg
-                elif (r, c) in self.sudoku.given_cells:
-                    bg = self.given_bg
-                else:
-                    bg = self.normal_bg
-
-                if show_errors and value != 0 and not self.sudoku.is_valid_placement(r, c, value):
-                    bg = self.error_bg
-
-                label.config(bg=bg)
-
-                if (r, c) in self.sudoku.given_cells:
-                    label.config(fg="black", font=("Arial", 24, "bold"))
-                else:
-                    label.config(fg="#2255aa", font=("Arial", 24))
-
-
-    def flash_cell(self, row: int, col: int) -> None:
-        self.cells[row][col].config(bg=self.error_bg)
-        self.root.after(250, self.refresh_board)
-
-
-def play_game(size: int = 3, blanks: int = 40) -> None:
-    sudoku = Sudoku(size)
-    sudoku.generate_puzzle(blanks)
-
-    print("Generated Sudoku puzzle:")
-    sudoku.print_board()
-
-    while True:
-        print("\nOptions:")
-        print("1. Enter a move as row, column, number")
-        print("2. Type 'solve' to solve with DFS")
-        print("3. Type 'new' to generate a new puzzle")
-        print("4. Type 'quit' to stop")
-
-        inp = input("Your choice: ").strip().lower()
-
-        if inp == "quit":
-            break
-
-        if inp == "solve":
-            if solvers.solve_dfs(sudoku):
-                print("\nSolved with DFS/backtracking:")
-                sudoku.print_board()
-            else:
-                print("No solution exists for this board.")
-            continue
-
-        if inp == "new":
-            sudoku.generate_puzzle(blanks=40)
-            print("\nNew puzzle:")
-            sudoku.print_board()
-            continue
-
-        input_nums = inp.split(",")
-        if len(input_nums) != 3:
-            print("Error: Expected exactly 3 integers, like: 1, 2, 9")
-            continue
-
-        try:
-            row, col, num = input_nums
-            row, col, num = int(row) - 1, int(col) - 1, int(num)
-        except ValueError:
-            print("Error: row, column, and number must be integers.")
-            continue
-
-        if sudoku.can_place(row, col, num):
-            sudoku.board[row][col] = num
-            sudoku.print_board()
-
-            if sudoku.is_complete_and_valid():
-                print("Congratulations, you solved it!")
-                break
-        else:
-            print("Invalid placement")
-
-
-def run_gui() -> None:
+def run_compare_gui() -> None:
     root = tk.Tk()
-    SudokuGUI(root, size=3)
+    SudokuCompareGUI(root, size=3)
     root.mainloop()
