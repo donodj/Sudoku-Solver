@@ -61,7 +61,7 @@ class Sudoku:
         best_count = self.row_col_length + 1
 
         for r in range(self.row_col_length):
-            for c in range(self.row_col_length):
+            for c in range(self.row_col_length):  
                 if self.board[r][c] == 0:
                     count = len(self.get_candidates(r, c))
                     if count < best_count:

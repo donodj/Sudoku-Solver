@@ -160,7 +160,7 @@ def heuristic_generator(start_board: Board, size: int = 3) -> Generator[SolverYi
             return True
 
         row, col, candidates = chosen
-        if not candidates:
+        if not candidates:  
             return False
 
         for num in lcv_order(row, col, candidates):

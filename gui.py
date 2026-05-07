@@ -5,7 +5,7 @@ from tkinter import simpledialog
 
 from sudoku import Sudoku
 import solvers
-
+  
 
 class SolverPanel:
     def __init__(self, parent: tk.Widget, title: str, size: int = 3) -> None:
@@ -230,7 +230,7 @@ class SudokuCompareGUI:
         any_running = False
         for panel in self.panels.values():
             panel.advance(self.given_cells)
-            any_running = any_running or panel.running
+            any_running = any_running or panel.running 
 
         if any_running and self.solving:
             self.root.after(10, self.tick)
