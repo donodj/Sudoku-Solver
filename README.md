@@ -2,6 +2,12 @@
 
 A program that visualizes 4 Sudoku solving algorithms and compares their performance.
 
+Algorithms used:
+* Depth-First Search
+* Knuth’s Algorithm X
+* Least-Constraining-Value (LCV) and Minimum Remaining Values (MRV) Heuristic
+* Constraint Satisfaction Problem (CSP) Method
+
 Code is distributed among 4 files:
 
 * sudoku.py - Has all the Sudoku game logic, and code to evaluate the board state and generate puzzles
