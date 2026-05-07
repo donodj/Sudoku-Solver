@@ -1,5 +1,7 @@
 # Sudoku Multi-Solver
 
+A program that visualizes 4 Sudoku solving algorithms and compares their performance.
+
 Code is distributed among 4 files:
 
 * sudoku.py - Has all the Sudoku game logic, and code to evaluate the board state and generate puzzles
